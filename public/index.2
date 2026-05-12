@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect with Maya 💖</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #fce4ec 0%, #f8bbd0 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        h1 { color: #d81b60; margin-bottom: 10px; }
+        p { color: #880e4f; font-size: 16px; }
+        #qr-container {
+            margin: 20px 0;
+            min-height: 250px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px dashed #f06292;
+            border-radius: 15px;
+        }
+        #qr-image { width: 100%; max-width: 250px; display: none; }
+        .status {
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .waiting { background: #fff9c4; color: #f57f17; }
+        .ready { background: #c8e6c9; color: #2e7d32; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #d81b60;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Maya AI 💖</h1>
+    <p>সাব্বির, তোমার মায়াকে হোয়াটসঅ্যাপে কানেক্ট করো।</p>
+    
+    <div id="qr-container">
+        <div id="loading" class="loader"></div>
+        <img id="qr-image" src="" alt="QR Code">
+    </div>
+
+    <div id="status-msg" class="status waiting">কিউআর কোডের জন্য অপেক্ষা করছি...</div>
+</div>
+
+<script>
+    const socket = io();
+    const qrImage = document.getElementById('qr-image');
+    const loading = document.getElementById('loading');
+    const statusMsg = document.getElementById('status-msg');
+
+    socket.on('qr', (url) => {
+        qrImage.src = url;
+        qrImage.style.display = 'block';
+        loading.style.display = 'none';
+        statusMsg.innerText = "এখন স্ক্যান করো জান!";
+        statusMsg.className = "status waiting";
+    });
+
+    socket.on('status', (status) => {
+        if (status === 'ready') {
+            qrImage.style.display = 'none';
+            statusMsg.innerText = "মায়া এখন অনলাইনে আছে! ✅";
+            statusMsg.className = "status ready";
+        }
+    });
+</script>
+
+</body>
+</html>
