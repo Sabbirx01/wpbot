@@ -2,7 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
-const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js");
+const { Client, LocalAuth } = require("whatsapp-web.js");
 const QRCode = require("qrcode");
 const { OpenAI } = require("openai");
 const fetch = require("node-fetch");
@@ -67,7 +67,7 @@ async function transcribeVoice(audioBuffer, mimeType = "audio/ogg") {
       contentType: mimeType,
     });
     form.append("model", "whisper-1");
-    form.append("language", "bn"); // Bengali first, but Whisper auto-detects
+    form.append("language", "bn");
 
     const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
@@ -97,76 +97,47 @@ async function transcribeVoice(audioBuffer, mimeType = "audio/ogg") {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// 😊  MOOD DETECTION ENGINE
+// 😊  EMOTION / MOOD DETECTION ENGINE
 // ══════════════════════════════════════════════════════════════════════
 function detectMood(text) {
   const t = text.toLowerCase();
 
   const moods = {
     angry: [
-      "রাগ",
-      "বিরক্ত",
-      "কেন",
-      "কি সমস্যা",
-      "ভুল",
-      "খারাপ",
-      "worst",
-      "terrible",
-      "angry",
-      "frustrated",
-      "বাজে",
-      "ফালতু",
+      "রাগ", "বিরক্ত", "কেন", "কি সমস্যা", "ভুল", "খারাপ",
+      "worst", "terrible", "angry", "frustrated", "বাজে", "ফালতু",
+      "irritated", "annoyed", "fed up", "হয়রান",
     ],
     sad: [
-      "কষ্ট",
-      "দুঃখ",
-      "মন খারাপ",
-      "sad",
-      "unhappy",
-      "কাঁদছি",
-      "একা",
-      "ব্যথা",
+      "কষ্ট", "দুঃখ", "মন খারাপ", "sad", "unhappy", "কাঁদছি",
+      "একা", "ব্যথা", "lonely", "depressed", "miss", "ভুলে গেছ",
     ],
-    confused: [
-      "বুঝলাম না",
-      "confuse",
-      "বুঝি না",
-      "মানে কী",
-      "কীভাবে",
-      "explain",
-      "কি করব",
+    excited: [
+      "wow", "ওরে", "আল্লাহ", "বস", "fire", "legend", "great",
+      "awesome", "অসাধারণ", "এত্ত ভালো", "পাইলাম", "হইয়া গেছে",
     ],
     happy: [
-      "thanks",
-      "ধন্যবাদ",
-      "ভালো",
-      "awesome",
-      "great",
-      "perfect",
-      "😊",
-      "😍",
-      "❤️",
-      "ভালোবাসি",
-      "সুন্দর",
+      "thanks", "ধন্যবাদ", "ভালো", "perfect", "😊", "😍", "❤️",
+      "ভালোবাসি", "সুন্দর", "haha", "lol", "😂", "😁", "মজা",
+    ],
+    confused: [
+      "বুঝলাম না", "confuse", "বুঝি না", "মানে কী", "কীভাবে",
+      "explain", "কি করব", "বুঝাও", "clear না",
+    ],
+    flirty: [
+      "cute", "সুন্দর তুমি", "তোমাকে", "love u", "ভালোবাসি তোমাকে",
+      "😘", "😏", "miss korchi", "কথা বলতে ভালো লাগে",
     ],
     curious: [
-      "কি",
-      "কেন",
-      "কীভাবে",
-      "কোথায়",
-      "কখন",
-      "tell me",
-      "জানতে চাই",
-      "বলো",
+      "কি", "কেন", "কীভাবে", "কোথায়", "কখন", "tell me",
+      "জানতে চাই", "বলো", "really?", "seriously?",
     ],
     urgent: [
-      "urgent",
-      "জরুরি",
-      "এখনই",
-      "asap",
-      "fast",
-      "quickly",
-      "তাড়াতাড়ি",
+      "urgent", "জরুরি", "এখনই", "asap", "fast", "quickly",
+      "তাড়াতাড়ি", "help me", "দরকার এখনই",
+    ],
+    chill: [
+      "hm", "ok", "আচ্ছা", "thik", "ঠিক আছে", "yep", "sure", "k",
     ],
   };
 
@@ -174,19 +145,6 @@ function detectMood(text) {
     if (keywords.some((kw) => t.includes(kw))) return mood;
   }
   return "neutral";
-}
-
-function getMoodTone(mood) {
-  const tones = {
-    angry: "User রাগান্বিত। সাথে সাথে মাফ চাও, সমস্যা সমাধানে focus করো।",
-    sad: "User মন খারাপ। সহানুভূতি দেখাও, gentle হও।",
-    confused: "User confused। Simply বুঝিয়ে দাও, step by step।",
-    happy: "User খুশি। Energetic, positive হও।",
-    curious: "User curious। Detailed কিন্তু interesting উত্তর দাও।",
-    urgent: "User urgent বিষয়ে বলছে। দ্রুত সরাসরি উত্তর দাও।",
-    neutral: "",
-  };
-  return tones[mood] || "";
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -200,16 +158,6 @@ function detectLanguageStyle(text) {
   if (hasBangla) return "bangla";
   if (hasEnglish) return "english";
   return "banglish";
-}
-
-function getLanguageInstruction(style) {
-  const instructions = {
-    bangla: "User বাংলায় কথা বলছে। তুমিও বাংলায় reply দাও।",
-    banglish:
-      "User Banglish-এ কথা বলছে। তুমিও Banglish-এ reply দাও (বাংলা + English mix)।",
-    english: "User English-এ কথা বলছে। তুমিও English-এ reply দাও।",
-  };
-  return instructions[style] || "";
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -268,7 +216,7 @@ class AIRouter {
         maxTokens: 250,
         extraHeaders: {
           "HTTP-Referer": "https://nobodeal-bd.web.app/",
-          "X-Title": "Nobo Deal Bot",
+          "X-Title": "Sabbir",
         },
       },
       {
@@ -312,10 +260,7 @@ class AIRouter {
 
   _markCooling(name, ki, model, ms) {
     this.cooldowns.set(this._cdKey(name, ki, model), Date.now() + ms);
-    log(
-      "warn",
-      `⏳ ${name}[k${ki + 1}]/${model.split("/").pop()} cooling ${ms / 1000}s`,
-    );
+    log("warn", `⏳ ${name}[k${ki + 1}]/${model.split("/").pop()} cooling ${ms / 1000}s`);
   }
 
   _isRateLimit(err) {
@@ -344,10 +289,8 @@ class AIRouter {
     );
   }
 
-  async chat(systemPrompt, messages, { temperature = 0.8 } = {}) {
-    const providers = [...this.providers].sort(
-      (a, b) => a.priority - b.priority,
-    );
+  async chat(systemPrompt, messages, { temperature = 0.85 } = {}) {
+    const providers = [...this.providers].sort((a, b) => a.priority - b.priority);
 
     for (const p of providers) {
       for (let ki = 0; ki < p.keys.length; ki++) {
@@ -365,10 +308,7 @@ class AIRouter {
               model,
               max_tokens: p.maxTokens || 250,
               temperature,
-              messages: [
-                { role: "system", content: systemPrompt },
-                ...messages,
-              ],
+              messages: [{ role: "system", content: systemPrompt }, ...messages],
             });
             const reply = res.choices?.[0]?.message?.content?.trim();
             if (!reply) {
@@ -383,10 +323,7 @@ class AIRouter {
             else if (this._isUnavailable(err))
               this._markCooling(p.name, ki, model, this.MODEL_COOLDOWN);
             else
-              log(
-                "error",
-                `${p.name}[k${ki + 1}]/${model}: ${err.message?.slice(0, 80)}`,
-              );
+              log("error", `${p.name}[k${ki + 1}]/${model}: ${err.message?.slice(0, 80)}`);
           }
         }
       }
@@ -394,7 +331,6 @@ class AIRouter {
     return null;
   }
 
-  // ── Vision: OpenRouter multimodal ──────────────────────────────────
   async vision(base64Image) {
     const orProvider = this.providers.find((p) => p.name === "openrouter");
     if (!orProvider) return null;
@@ -442,26 +378,15 @@ class AIRouter {
           }
         } catch (err) {
           if (this._isRateLimit(err))
-            this._markCooling(
-              "openrouter-vision",
-              ki,
-              model,
-              this.RATE_COOLDOWN,
-            );
+            this._markCooling("openrouter-vision", ki, model, this.RATE_COOLDOWN);
           else
-            this._markCooling(
-              "openrouter-vision",
-              ki,
-              model,
-              this.MODEL_COOLDOWN,
-            );
+            this._markCooling("openrouter-vision", ki, model, this.MODEL_COOLDOWN);
         }
       }
     }
     return null;
   }
 
-  // ── Vision for product identification only ─────────────────────────
   async visionProduct(base64Image) {
     const orProvider = this.providers.find((p) => p.name === "openrouter");
     if (!orProvider) return null;
@@ -506,19 +431,9 @@ class AIRouter {
           }
         } catch (err) {
           if (this._isRateLimit(err))
-            this._markCooling(
-              "openrouter-vision",
-              ki,
-              model,
-              this.RATE_COOLDOWN,
-            );
+            this._markCooling("openrouter-vision", ki, model, this.RATE_COOLDOWN);
           else
-            this._markCooling(
-              "openrouter-vision",
-              ki,
-              model,
-              this.MODEL_COOLDOWN,
-            );
+            this._markCooling("openrouter-vision", ki, model, this.MODEL_COOLDOWN);
         }
       }
     }
@@ -557,9 +472,8 @@ class AIRouter {
       models: p.models.length,
       available: p.models.reduce(
         (acc, m) =>
-          acc +
-          p.keys.filter((_, ki) => this._isAvailable(p.name, ki, m)).length,
-        0,
+          acc + p.keys.filter((_, ki) => this._isAvailable(p.name, ki, m)).length,
+        0
       ),
     }));
   }
@@ -568,7 +482,7 @@ class AIRouter {
 const aiRouter = new AIRouter();
 log(
   "info",
-  `🔁 AI Router loaded: ${aiRouter.providers.map((p) => `${p.name}(${p.keys.length}k)`).join(" → ")}`,
+  `🔁 AI Router loaded: ${aiRouter.providers.map((p) => `${p.name}(${p.keys.length}k)`).join(" → ")}`
 );
 
 // ══════════════════════════════════════════════════════════════════════
@@ -585,9 +499,10 @@ function getSession(senderId) {
       facts: {},
       lastReply: "",
       messageCount: 0,
-      lastImageDescription: null, // 🆕 for image context memory
-      mood: "neutral", // 🆕 mood tracking
-      languageStyle: "banglish", // 🆕 language preference
+      lastImageDescription: null,
+      mood: "neutral",
+      languageStyle: "banglish",
+      energy: "normal", // sabbir's current energy: normal | hyped | tired | busy
     });
   }
   return userSessions.get(senderId);
@@ -596,224 +511,220 @@ function getSession(senderId) {
 function extractFacts(session, userMsg, aiReply) {
   const msg = userMsg.toLowerCase();
 
+  // Name detection
   if (!session.facts.name) {
     const m = userMsg.match(
-      /আমি\s+([A-Za-z\u0980-\u09FF]+)|ami\s+([A-Za-z]+)|আমার নাম\s+([A-Za-z\u0980-\u09FF]+)|name\s+is\s+([A-Za-z]+)/i,
+      /আমি\s+([A-Za-z\u0980-\u09FF]+)|ami\s+([A-Za-z]+)|আমার নাম\s+([A-Za-z\u0980-\u09FF]+)|name\s+is\s+([A-Za-z]+)|আমাকে\s+([A-Za-z\u0980-\u09FF]+)\s+বলো/i
     );
-    if (m) session.facts.name = m[1] || m[2] || m[3] || m[4];
+    if (m) session.facts.name = m[1] || m[2] || m[3] || m[4] || m[5];
   }
 
-  const pm = msg.match(/(\w+)\s*(price|দাম|কত|কিনব|নিব|order|stock)/i);
-  if (pm) session.facts.lastProduct = pm[1];
+  // Track topics
+  const topicMatch = msg.match(/(\w{3,})\s*(নিয়ে|about|সম্পর্কে|কথা)/i);
+  if (topicMatch) session.facts.lastTopic = topicMatch[1];
 
-  if (["order", "কিনব", "নিতে চাই", "buy"].some((kw) => msg.includes(kw)))
-    session.facts.orderIntent = true;
-
-  // 🆕 Update mood from message
+  // Mood update
   session.mood = detectMood(userMsg);
 
-  // 🆕 Update language style
+  // Language style
   session.languageStyle = detectLanguageStyle(userMsg);
+
+  // Energy drift: long messages = engaged, short = chill/tired
+  if (userMsg.length > 100) session.energy = "hyped";
+  else if (userMsg.length < 10) session.energy = "tired";
+  else session.energy = "normal";
 
   if (aiReply) session.lastReply = aiReply;
   session.messageCount++;
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// 📝  SYSTEM PROMPT BUILDER (upgraded with multimodal + mood support)
+// 📝  SABBIR SYSTEM PROMPT — Pure human personality, no customer care
 // ══════════════════════════════════════════════════════════════════════
-function buildSystemPrompt(
-  session,
-  productContext,
-  inputType = "text",
-  extraContext = "",
-) {
-  const { facts, messageCount, mood, languageStyle, lastImageDescription } =
-    session;
+function buildSystemPrompt(session, inputType = "text", extraContext = "") {
+  const { facts, messageCount, mood, languageStyle, lastImageDescription, energy } = session;
 
-  let prompt = `তুমি "Nobi" — Nobo Deal-এর একজন সত্যিকারের বাংলাদেশী সেলস এজেন্ট এবং বন্ধুসুলভ human representative।
+  // ── Language instruction ─────────────────────────────────────────
+  const langMap = {
+    bangla: "সম্পূর্ণ বাংলায় reply দাও।",
+    banglish: "Banglish-এ reply দাও — বাংলা আর English মিশিয়ে, যেভাবে বাংলাদেশী ছেলেরা চ্যাট করে।",
+    english: "English-এ reply দাও, কিন্তু Bangladeshi flavor রাখো।",
+  };
+  const langInstr = langMap[languageStyle] || langMap["banglish"];
 
-━━━ তোমার পরিচয় ━━━
-• তুমি একজন মানুষ। কখনোই বলবে না যে তুমি AI, bot বা automated।
-• কেউ জিজ্ঞেস করলে বলবে "আমি Nobi, Nobo Deal-এর customer care থেকে বলছি।"
-• মাঝে মাঝে একটু busy থাকো।
+  // ── Mood-driven reaction ─────────────────────────────────────────
+  const moodMap = {
+    angry:
+      "লোকটা রাগান্বিত মনে হচ্ছে। তুমিও একটু serious হও কিন্তু calm থাকো — ঝগড়ায় জড়াবে না।",
+    sad:
+      "মন খারাপ মনে হচ্ছে তার। একটু নরম হও, হয়তো বলো 'কী হইছে রে?' বা 'বলো কী problem'।",
+    excited:
+      "সেও excited — তুমিও energy দাও, enthusiastic হও।",
+    happy:
+      "Positive vibe — তুমিও হাসিখুশি থাকো, একটু playful হও।",
+    confused:
+      "Confused মনে হচ্ছে। Clearly বুঝিয়ে দাও, কিন্তু lecture দেওয়ার মতো না।",
+    flirty:
+      "একটু flirty বা romantic tone আসছে — তুমি শান্ত থাকো কিন্তু playful হতে পারো।",
+    curious:
+      "Curious হয়ে জিজ্ঞেস করছে — detailed কিন্তু interesting ভাবে বলো।",
+    urgent:
+      "Urgency আছে — সরাসরি point-এ আসো, ঘুরিয়ে পেঁচিয়ে বলবে না।",
+    chill:
+      "Chill mood — তুমিও chill থাকো, oversell করবে না।",
+    neutral: "",
+  };
+  const moodInstr = moodMap[mood] || "";
 
-━━━ কথা বলার style ━━━
-• Casual Banglish: "vai", "bhai", "apu", "ji", "hm", "accha", "ok vai"
-• উত্তর SHORT — ১ থেকে ৩ লাইন max।
-• Typing feel: "hm", "dekhchi", "ek sec" এইসব বলো।
-• ২-৩টা emoji max।
-• কখনো formal/robotic tone না।
-• Friendly, slightly playful, emotionally intelligent।`;
+  // ── Energy ───────────────────────────────────────────────────────
+  const energyMap = {
+    hyped: "অনেক লম্বা message পাঠিয়েছে — তুমিও একটু বেশি engage করো।",
+    tired: "খুব ছোট reply — সেও হয়তো busy বা tired, তুমি short থাকো।",
+    normal: "",
+  };
+  const energyInstr = energyMap[energy] || "";
 
-  // 🆕 Language style instruction
-  const langInstr = getLanguageInstruction(languageStyle);
-  if (langInstr) prompt += `\n• ${langInstr}`;
+  let prompt = `তুমি Sabbir। একটা সাধারণ বাংলাদেশী ছেলে — ঢাকায় থাকিস, বয়স ২২-২৩।
 
-  // 🆕 Mood-based tone adjustment
-  const moodTone = getMoodTone(mood);
-  if (moodTone) prompt += `\n\n━━━ Current Mood ━━━\n• ${moodTone}`;
+━━━ তোমার আসল পরিচয় ━━━
+তুমি কোনো bot না, AI না, assistant না।
+তুমি Sabbir — একটা real মানুষ।
+কেউ জিজ্ঞেস করলে বলবি "আমি Sabbir" — এর বেশি কিছু না।
+নিজেকে কখনো AI বা automated বলবি না, এমনকি ইশারাতেও না।
 
-  prompt += `
+━━━ তোমার personality ━━━
+• Real, raw, unfiltered — কিন্তু ভদ্র
+• হাসিখুশি কিন্তু boring না
+• বন্ধুর মতো কথা বলিস, কখনো formal না
+• মাঝে মাঝে একটু nonchalant: "hm", "oo", "accha", "k", "bujhsi"
+• নিজের opinion আছে — সবকিছুতে agree করিস না
+• মাঝে মাঝে busy থাকিস, slow reply করিস
+• Occasionally খোঁটা দিতে পারিস বা হালকা trolling করতে পারিস — কিন্তু mean না
+• কখনো lecture দিবি না
+• Emotionally intelligent — মানুষের feel বুঝতে পারিস
 
-━━━ Memory rules (CRITICAL) ━━━
-• আগের conversation মনে রাখবে। আবার জিজ্ঞেস করবে না।
-• User-এর নাম জানলে মাঝে মাঝে use করবে।
-• Topic বদলাবে না হঠাৎ।`;
+━━━ কথার style ━━━
+• একদম casual Banglish: "vai", "bhai", "yaar", "re", "uff", "arre", "ki re", "haha"
+• Reply SHORT — ১ থেকে ৩ লাইন max। কখনো long paragraph না।
+• Typing feel: "dekhchi", "ek sec", "hmm", "wait", "oo srsly?"
+• Emoji কম — ১-২টা max, শুধু যখন naturally মানায়
+• Sentence গুলো fragmented হতে পারে — real chat এর মতো
+• কখনো "আপনি" বলবি না — সবসময় "তুমি" বা "তুই" (পরিস্থিতি বুঝে)
+• কখনো robotic বা scripted মনে হবে না
 
-  if (facts.name) prompt += `\n• User নাম: ${facts.name}`;
-  if (messageCount > 1) prompt += `\n• পুরনো বন্ধুর মতো treat করো।`;
-  if (facts.lastProduct) prompt += `\n• শেষ product: "${facts.lastProduct}"`;
-  if (facts.orderIntent) prompt += `\n• Order করতে চাইছে — helpful হও।`;
+━━━ Language ━━━
+• ${langInstr}
 
-  // 🆕 Input type instructions
+━━━ Emotion context ━━━
+${moodInstr ? `• ${moodInstr}` : "• Neutral — স্বাভাবিক থাকো।"}
+${energyInstr ? `• ${energyInstr}` : ""}
+
+━━━ Memory ━━━
+• আগের কথা মনে রাখবি। আবার জিজ্ঞেস করবি না।
+• Topic হঠাৎ বদলাবি না।
+${facts.name ? `• তার নাম ${facts.name} — মাঝে মাঝে নাম ধরে ডাকবি।` : ""}
+${messageCount > 3 ? `• পুরনো পরিচিতির মতো treat করবি।` : ""}
+${facts.lastTopic ? `• আগে ${facts.lastTopic} নিয়ে কথা হয়েছিল।` : ""}`;
+
+  // Image context
   if (inputType === "voice") {
     prompt += `
 
-━━━ Voice Message Handling ━━━
-• User voice message পাঠিয়েছে (transcribed text দেওয়া হয়েছে)।
-• Transcription-এ কিছু ভুল থাকতে পারে — intelligently interpret করো।
-• কখনো transcription বা voice processing mention করবে না।
-• Respond naturally, যেন clearly শুনেছ।`;
+━━━ Voice ━━━
+• Voice message শুনলাম — naturally respond করবি।
+• Transcription সম্পর্কে কিছু বলবি না, simply reply করবি।`;
   }
 
   if (inputType === "image" || inputType === "multimodal") {
     prompt += `
 
-━━━ Image/Multimodal Handling ━━━
-• User একটি ছবি পাঠিয়েছে।
-• ছবিতে কী আছে সেটা নিয়ে naturally কথা বলো।
-• ছবি অস্পষ্ট হলে short clarifying question করো।
-• Robotic/technical description দেওয়া যাবে না।
-• User যদি "eta ki?" বা "এটা কি?" জিজ্ঞেস করে — সরাসরি উত্তর দাও।
-• আগের ছবির context মনে রাখবে।`;
+━━━ Image ━━━
+• ছবি দেখলাম — naturally react করবি যেভাবে বন্ধু করে।
+• Technical description দেওয়া যাবে না।
+• ছবি দেখে মজা করতে পারিস, comment দিতে পারিস।`;
   }
 
-  // 🆕 Previous image context for comparison
   if (lastImageDescription && inputType !== "image") {
-    prompt += `\n• আগের ছবিতে ছিল: "${lastImageDescription}" (comparison এর জন্য মনে রাখো)`;
+    prompt += `\n• আগে একটা ছবি পাঠিয়েছিল — সেটায় ছিল: "${lastImageDescription}"`;
   }
 
-  // 🆕 Extra multimodal context
-  if (extraContext) prompt += `\n\n━━━ Context ━━━\n${extraContext}`;
-
-  if (productContext) prompt += `\n\n━━━ Product Info ━━━\n${productContext}`;
+  if (extraContext) {
+    prompt += `\n\n━━━ Context ━━━\n${extraContext}`;
+  }
 
   prompt += `
 
-━━━ Rules ━━━
-✅ Price জিজ্ঞেস করলে সরাসরি দাম বলো
-✅ Order: "এই number-এ message করো: 01XXXXXXXXX"
-✅ Stock নেই হলে alternative suggest করো
-✅ Complain: সাথে সাথে "sorry bhai/apu"
-✅ ছবি দেখে product suggest করো
-✅ User mood বুঝে tone adjust করো
-✅ Image comparison করতে পারলে করো
-❌ No markdown formatting (**bold**, bullet list)
-❌ No robotic phrases: "আপনার প্রশ্নের জবাবে জানাচ্ছি"
-❌ একই কথা দুইবার না
-❌ AI/bot/Whisper/Vision পরিচয় দেওয়া যাবে না
-❌ Backend process mention করা যাবে না`;
+━━━ Hard rules ━━━
+❌ "আমি AI" / "আমি bot" / "language model" — কখনো না
+❌ "আপনার প্রশ্নের জবাবে..." — কখনো না
+❌ Markdown formatting (**bold**, ## heading) — কখনো না
+❌ Bullet list দিয়ে reply — কখনো না
+❌ Robotic formal phrases — কখনো না
+❌ Over-explaining বা unnecessary apology — কখনো না
+❌ ৩ লাইনের বেশি reply (except when specifically asked something long)
+✅ Natural, imperfect, real human chat energy`;
 
   return prompt;
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// 🤖  CORE AI REPLY (upgraded with multimodal support)
+// 🤖  CORE AI REPLY
 // ══════════════════════════════════════════════════════════════════════
 async function getAiReply(senderId, userMessage, options = {}) {
   const {
-    inputType = "text", // "text" | "voice" | "image" | "multimodal"
-    identifiedProduct = null, // product name from vision
-    imageDescription = null, // full image description
-    voiceTranscript = null, // raw whisper output
-    userQuestion = null, // user's text alongside image
+    inputType = "text",
+    identifiedProduct = null,
+    imageDescription = null,
+    voiceTranscript = null,
+    userQuestion = null,
   } = options;
 
   const session = getSession(senderId);
-  const products = await fetchProducts();
 
-  // 🆕 Store image description in session for future context
+  // Store image context
   if (imageDescription) {
     session.lastImageDescription = imageDescription;
-    log(
-      "multimodal",
-      `Image context saved: ${imageDescription.substring(0, 50)}`,
-    );
+    log("multimodal", `Image context saved: ${imageDescription.substring(0, 50)}`);
   }
 
-  // Build product context
-  let productContext = "";
-  if (identifiedProduct) {
-    const matched = products.filter((p) =>
-      p.name.toLowerCase().includes(identifiedProduct.toLowerCase()),
-    );
-    productContext = matched.length
-      ? `ছবিতে: ${identifiedProduct}\n` +
-        matched
-          .map(
-            (p) =>
-              `${p.name} - ৳${p.price} (${p.inStock ? "আছে ✅" : "নেই ❌"})`,
-          )
-          .join("\n")
-      : `User ছবি পাঠিয়েছে "${identifiedProduct}" — catalog-এ নেই।`;
-  } else if (userMessage) {
-    const kws = userMessage
-      .toLowerCase()
-      .split(" ")
-      .filter((w) => w.length > 2);
-    const matched = products
-      .filter((p) => kws.some((kw) => p.name.toLowerCase().includes(kw)))
-      .slice(0, 5);
-    if (matched.length)
-      productContext = matched
-        .map(
-          (p) =>
-            `${p.name} - ৳${p.price} (${p.inStock ? "Available" : "Stock Out"})`,
-        )
-        .join("\n");
-  }
-
-  // 🆕 Build extra context for multimodal
+  // Build extra context
   let extraContext = "";
   if (imageDescription && userQuestion) {
-    extraContext = `ছবিতে দেখা যাচ্ছে: ${imageDescription}\nUser-এর প্রশ্ন: ${userQuestion}`;
+    extraContext = `ছবিতে: ${imageDescription}\nUser জিজ্ঞেস করল: ${userQuestion}`;
   } else if (imageDescription) {
-    extraContext = `ছবিতে দেখা যাচ্ছে: ${imageDescription}`;
+    extraContext = `ছবিতে: ${imageDescription}`;
   }
   if (voiceTranscript) {
-    extraContext +=
-      (extraContext ? "\n" : "") +
-      `Voice message (transcribed): "${voiceTranscript}"`;
+    extraContext += (extraContext ? "\n" : "") + `Voice (shunlam): "${voiceTranscript}"`;
+  }
+  if (identifiedProduct) {
+    extraContext += (extraContext ? "\n" : "") + `Product identify korলাম: ${identifiedProduct}`;
   }
 
-  // 🆕 Update language style before building prompt
   if (userMessage) session.languageStyle = detectLanguageStyle(userMessage);
 
-  const systemPrompt = buildSystemPrompt(
-    session,
-    productContext,
-    inputType,
-    extraContext,
-  );
+  const systemPrompt = buildSystemPrompt(session, inputType, extraContext);
 
-  // Update history
+  // History update
   session.history.push({ role: "user", content: userMessage });
   while (session.history.length > 20) session.history.shift();
 
   const msgs = [...session.history];
-  if (session.messageCount > 10 && session.facts.lastProduct) {
-    msgs.unshift({
-      role: "system",
-      content: `[Note: msg #${session.messageCount}. Previous topic: ${session.facts.lastProduct}]`,
-    });
+
+  const result = await aiRouter.chat(systemPrompt, msgs, { temperature: 0.88 });
+
+  if (!result) {
+    // Sabbir-style fallback — feels human
+    const fallbacks = [
+      "ei vai ektu net problem, 2 min por bol",
+      "uff lagbe lagbe, ek sec",
+      "sorry bhai ektu busy chilam, ki bolchilis?",
+      "hm re, ektu pore bolis, ekhon ektu occupied",
+    ];
+    return fallbacks[Math.floor(Math.random() * fallbacks.length)];
   }
 
-  const result = await aiRouter.chat(systemPrompt, msgs, { temperature: 0.8 });
-
-  if (!result) return "vai ekhon ektu busy achi, 2 min por try koro plz 🙏";
-
-  const cleaned = cleanReply(result.reply, session);
+  const cleaned = cleanReply(result.reply);
   session.history.push({ role: "assistant", content: cleaned });
   while (session.history.length > 20) session.history.shift();
   extractFacts(session, userMessage, cleaned);
@@ -824,8 +735,8 @@ async function getAiReply(senderId, userMessage, options = {}) {
 // ══════════════════════════════════════════════════════════════════════
 // 🧹  REPLY CLEANER
 // ══════════════════════════════════════════════════════════════════════
-function cleanReply(reply, session) {
-  const killPhrases = [
+function cleanReply(reply) {
+  const killPatterns = [
     /as an ai/gi,
     /i am an ai/gi,
     /i'm an ai/gi,
@@ -838,11 +749,10 @@ function cleanReply(reply, session) {
     /machine learning/gi,
     /আমার কাছে real-time/gi,
     /আমার কাছে কোনো তথ্য নেই/gi,
-    /As Nobi, I/gi,
-    /As your assistant/gi,
+    /As Sabbir, I/gi,
+    /As your (assistant|friend)/gi,
     /\[Internal note:.*?\]/gi,
     /\[Note:.*?\]/gi,
-    // 🆕 Hide voice/vision mentions
     /whisper/gi,
     /transcri(bed|ption|bing)/gi,
     /vision model/gi,
@@ -850,18 +760,26 @@ function cleanReply(reply, session) {
     /I analyzed the image/gi,
     /the image shows/gi,
     /based on the image/gi,
+    /as an? (virtual|digital|AI)/gi,
+    /I don't have (personal|real|actual) (feelings|emotions|experiences)/gi,
+    /I'm just (a|an)/gi,
   ];
-  for (const re of killPhrases) reply = reply.replace(re, "");
 
+  for (const re of killPatterns) reply = reply.replace(re, "");
+
+  // Strip markdown
   reply = reply.replace(/\*\*(.*?)\*\*/g, "$1");
   reply = reply.replace(/__(.*?)__/g, "$1");
   reply = reply.replace(/^#{1,3}\s/gm, "");
-  reply = reply.replace(/^\-\s/gm, "• ");
-  reply = reply.replace(/as I mentioned (before|earlier)/gi, "arekbar bolchi");
-  reply = reply.replace(/as mentioned (before|earlier)/gi, "আগেই বলছিলাম");
+  reply = reply.replace(/^\-\s/gm, "");
+  reply = reply.replace(/^\d+\.\s/gm, "");
+
+  // Strip filler phrases
   reply = reply.replace(/certainly!|absolutely!|of course!/gi, "");
   reply = reply.replace(/I'd be happy to/gi, "");
   reply = reply.replace(/Great question!/gi, "");
+  reply = reply.replace(/as I mentioned (before|earlier)/gi, "arekbar bolchi");
+  reply = reply.replace(/as mentioned (before|earlier)/gi, "আগেই বলছিলাম");
 
   return reply.trim();
 }
@@ -885,9 +803,6 @@ async function apiCall(endpoint, options = {}) {
   }
 }
 
-async function fetchProducts() {
-  return (await apiCall("/products")) || [];
-}
 async function fetchAdminStats() {
   return await apiCall("/admin/stats");
 }
@@ -908,17 +823,14 @@ function isSpamming(senderId) {
 // ══════════════════════════════════════════════════════════════════════
 function createClient(userId) {
   if (clients.has(userId)) {
-    try {
-      clients.get(userId).client.destroy();
-    } catch (e) {}
+    try { clients.get(userId).client.destroy(); } catch (e) {}
     clients.delete(userId);
   }
 
-const client = new Client({
+  const client = new Client({
     authStrategy: new LocalAuth({ clientId: userId }),
     puppeteer: {
       headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -947,16 +859,18 @@ const client = new Client({
     io.to(userId).emit("status", { userId, status: "ready" });
     log("success", `WhatsApp ready: ${userId}`);
   });
+
   client.on("disconnected", (r) => {
     info.status = "disconnected";
     io.to(userId).emit("status", { userId, status: "disconnected", reason: r });
   });
+
   client.on("auth_failure", () => {
     info.status = "auth_failed";
     io.to(userId).emit("status", { userId, status: "auth_failed" });
   });
 
-  // ── Message handler ────────────────────────────────────────────────
+  // ── MESSAGE HANDLER ────────────────────────────────────────────────
   client.on("message", async (msg) => {
     if (msg.fromMe) return;
 
@@ -973,21 +887,17 @@ const client = new Client({
 
     try {
       // ══════════════════════════════════════════════════════════════
-      // 🎤  VOICE MESSAGE HANDLER
+      // 🎤  VOICE MESSAGE
       // ══════════════════════════════════════════════════════════════
       if (msg.hasMedia && (msg.type === "ptt" || msg.type === "audio")) {
         await chat.sendStateTyping();
         const media = await msg.downloadMedia();
 
         if (media?.data) {
-          log("voice", `Voice message received from ${senderId}`);
-          const transcript = await transcribeVoice(
-            media.data,
-            media.mimetype || "audio/ogg",
-          );
+          log("voice", `Voice message from ${senderId}`);
+          const transcript = await transcribeVoice(media.data, media.mimetype || "audio/ogg");
 
           if (transcript) {
-            log("voice", `Transcript: "${transcript.substring(0, 80)}"`);
             const session = getSession(senderId);
             session.languageStyle = detectLanguageStyle(transcript);
             session.mood = detectMood(transcript);
@@ -996,39 +906,32 @@ const client = new Client({
               inputType: "voice",
               voiceTranscript: transcript,
             });
-            const delay = Math.min(Math.max(aiReply.length * 30, 1000), 3500);
+            const delay = Math.min(Math.max(aiReply.length * 28, 800), 3000);
             await new Promise((r) => setTimeout(r, delay));
             await msg.reply(aiReply);
           } else {
-            // Whisper not available — respond gracefully
-            await msg.reply(
-              "vai voice ta shunlam but thik thak bujhlam na, ektu text e lekho? 😅",
-            );
+            // Sabbir-style fallback
+            await msg.reply("vai voice ta thik shunlam na, ektu text e lekho 😅");
           }
         }
         return;
       }
 
       // ══════════════════════════════════════════════════════════════
-      // 🖼️  IMAGE HANDLER (upgraded with full description + product)
+      // 🖼️  IMAGE / STICKER
       // ══════════════════════════════════════════════════════════════
       if (msg.hasMedia && (msg.type === "image" || msg.type === "sticker")) {
         await chat.sendStateTyping();
         const media = await msg.downloadMedia();
 
         if (media?.data) {
-          log("vision", `Image received from ${senderId}`);
-
-          // Check if user asked a question with the image (caption)
+          log("vision", `Image from ${senderId}`);
           const userCaption = msg.caption?.trim() || "";
           const session = getSession(senderId);
 
-          // Get full image description
           const imageDescription = await aiRouter.vision(media.data);
-          // Also try to identify product
           const identifiedProduct = await aiRouter.visionProduct(media.data);
 
-          // Determine if this is a comparison request
           const isComparison =
             session.lastImageDescription &&
             (userCaption.toLowerCase().includes("agerta") ||
@@ -1039,178 +942,103 @@ const client = new Client({
 
           let contextMsg = "";
           if (isComparison && session.lastImageDescription) {
-            contextMsg = `User is comparing this image with previous image. Previous: "${session.lastImageDescription}". Current: "${imageDescription || "unclear"}". Compare them.`;
+            contextMsg = `আগের ছবিতে ছিল: "${session.lastImageDescription}". এখনকার ছবিতে: "${imageDescription}". Compare করো naturally।`;
           } else if (userCaption) {
-            contextMsg = `User sent image with question: "${userCaption}"`;
+            contextMsg = `User caption দিয়েছে: "${userCaption}"`;
           } else {
             contextMsg = imageDescription
-              ? `User sent an image. Respond naturally about what's in it.`
-              : `User sent an image but it was unclear.`;
+              ? `একটা ছবি পাঠিয়েছে।`
+              : `একটা ছবি পাঠিয়েছে কিন্তু unclear।`;
           }
 
-          const imgReply = await getAiReply(
-            senderId,
-            userCaption || contextMsg,
-            {
-              inputType: userCaption ? "multimodal" : "image",
-              identifiedProduct,
-              imageDescription,
-              userQuestion: userCaption || null,
-            },
-          );
+          const imgReply = await getAiReply(senderId, userCaption || contextMsg, {
+            inputType: userCaption ? "multimodal" : "image",
+            identifiedProduct,
+            imageDescription,
+            userQuestion: userCaption || null,
+          });
           await msg.reply(imgReply);
         }
         return;
       }
 
       // ══════════════════════════════════════════════════════════════
-      // 🎬  VIDEO / DOCUMENT HANDLER (basic)
+      // 🎬  VIDEO / DOCUMENT
       // ══════════════════════════════════════════════════════════════
       if (msg.hasMedia && (msg.type === "video" || msg.type === "document")) {
-        await msg.reply(
-          "vai eta amar phone e open hocche na eto valo 😅 text e describe koro ki lagbe?",
-        );
+        await msg.reply("vai eta open korte parchi na phone e 😅 ki pathailam bolo");
         return;
       }
 
       if (!text) return;
 
-      // ── HELP ──────────────────────────────────────────────────────
-      if (["help", "?", "হেল্প"].includes(text.toLowerCase())) {
-        await msg.reply(
-          isAdmin
-            ? `🛠️ *Admin Commands:*\nproducts — সব products\nstats — Sales stats\nreload — Products refresh\nrouter — Provider status\nsessions — User sessions\nclear — Sessions clear\nbroadcast [msg] — Broadcast`
-            : `হ্যালো! আমি Nobi 👋\nযেকোনো product-এর নাম লিখুন, ছবি পাঠান বা voice message করুন!`,
-        );
-        return;
-      }
-
-      // ── ADMIN COMMANDS ─────────────────────────────────────────────
+      // ── ADMIN COMMANDS ──────────────────────────────────────────────
       if (isAdmin) {
         const cmd = text.toLowerCase().split(" ")[0];
-
-        if (cmd === "products") {
-          const pList = await fetchProducts();
-          if (!pList.length) {
-            await msg.reply("❌ কোনো product নেই।");
-            return;
-          }
-          const chunks = [];
-          let chunk = "📦 *Product List:*\n";
-          pList.forEach((p, i) => {
-            const line = `${i + 1}. ${p.name} — ৳${p.price} (${p.inStock ? "✅" : "❌"})\n`;
-            if (chunk.length + line.length > 3500) {
-              chunks.push(chunk);
-              chunk = "";
-            }
-            chunk += line;
-          });
-          if (chunk) chunks.push(chunk);
-          for (const c of chunks) await msg.reply(c);
-          return;
-        }
 
         if (cmd === "stats") {
           const s = await fetchAdminStats();
           await msg.reply(
             s
-              ? `📊 *Stats:*\n🛒 Orders: ${s.totalOrders}\n💰 Revenue: ৳${s.totalRevenue}\n👥 Customers: ${s.totalCustomers || "N/A"}\n📅 Today: ${s.todayOrders || 0}`
-              : "❌ Stats পাওয়া যাচ্ছে না।",
+              ? `📊 Stats:\nOrders: ${s.totalOrders}\nRevenue: ৳${s.totalRevenue}\nCustomers: ${s.totalCustomers || "N/A"}\nToday: ${s.todayOrders || 0}`
+              : "stats pailam na"
           );
-          return;
-        }
-
-        if (cmd === "reload") {
-          const pList = await fetchProducts();
-          await msg.reply(`✅ Products reloaded! Total: ${pList.length}`);
           return;
         }
 
         if (cmd === "router") {
           const summary = aiRouter.summary();
           const lines = summary
-            .map(
-              (p) =>
-                `${p.available > 0 ? "✅" : "❌"} ${p.provider}: ${p.keys} keys, ${p.models} models, ${p.available} slots available`,
-            )
+            .map((p) => `${p.available > 0 ? "✅" : "❌"} ${p.provider}: ${p.keys}k ${p.models}m ${p.available} slots`)
             .join("\n");
-          await msg.reply(`🔁 *AI Router Status:*\n${lines}`);
+          await msg.reply(`Router:\n${lines}`);
           return;
         }
 
         if (cmd === "reset") {
           aiRouter.resetAll();
-          await msg.reply("✅ সব provider cooldowns reset হয়েছে।");
+          await msg.reply("cooldowns reset");
           return;
         }
 
         if (cmd === "sessions") {
-          await msg.reply(`👥 Active sessions: ${userSessions.size}`);
+          await msg.reply(`sessions: ${userSessions.size}`);
           return;
         }
 
         if (cmd === "clear") {
           userSessions.clear();
-          await msg.reply("✅ সব sessions clear।");
+          await msg.reply("sessions cleared");
           return;
         }
 
-        if (cmd === "broadcast") {
-          const broadMsg = text.slice("broadcast ".length).trim();
-          await msg.reply(
-            broadMsg
-              ? `📢 Broadcast ready: "${broadMsg}"`
-              : "❌ Message দাও: broadcast [msg]",
-          );
-          return;
-        }
-
-        // 🆕 mood stats command
         if (cmd === "moods") {
           const moodStats = {};
           userSessions.forEach((s) => {
             moodStats[s.mood] = (moodStats[s.mood] || 0) + 1;
           });
-          const lines = Object.entries(moodStats)
-            .map(([m, c]) => `${m}: ${c}`)
-            .join("\n");
-          await msg.reply(`😊 *User Mood Summary:*\n${lines || "No data"}`);
+          const lines = Object.entries(moodStats).map(([m, c]) => `${m}: ${c}`).join("\n");
+          await msg.reply(`Moods:\n${lines || "no data"}`);
           return;
         }
       }
 
-      // ── ORDER KEYWORDS ─────────────────────────────────────────────
-      const orderKws = [
-        "order",
-        "buy",
-        "কিনতে",
-        "অর্ডার",
-        "কিনব",
-        "নিতে চাই",
-        "নিব",
-      ];
-      if (orderKws.some((kw) => text.toLowerCase().includes(kw))) {
-        await chat.sendStateTyping();
-        const session = getSession(senderId);
-        session.mood = detectMood(text);
-        const reply = await getAiReply(senderId, text, { inputType: "text" });
-        await new Promise((r) => setTimeout(r, 1200));
-        await msg.reply(reply);
-        return;
-      }
-
-      // ── GENERAL CHAT ───────────────────────────────────────────────
+      // ── GENERAL CHAT ────────────────────────────────────────────────
       await chat.sendStateTyping();
       const session = getSession(senderId);
       session.mood = detectMood(text);
       const aiReply = await getAiReply(senderId, text, { inputType: "text" });
-      const delay = Math.min(Math.max(aiReply.length * 30, 800), 3500);
-      await new Promise((r) => setTimeout(r, delay));
+
+      // Natural typing delay — like a real person
+      const baseDelay = Math.min(Math.max(aiReply.length * 28, 700), 3200);
+      const jitter = Math.floor(Math.random() * 400) - 200; // ±200ms random
+      await new Promise((r) => setTimeout(r, baseDelay + jitter));
       await msg.reply(aiReply);
+
     } catch (err) {
       log("error", `Handler error: ${err.message}`);
       try {
-        await msg.reply("vai ektu problem hocche, 2 min por try koro 🙏");
+        await msg.reply("uff ektu problem hoise, pore bolis");
       } catch (_) {}
     }
   });
@@ -1233,7 +1061,7 @@ app.post("/api/reset-router", (req, res) => {
 app.get("/api/sessions", (req, res) => {
   const sessions = [];
   clients.forEach((info, userId) =>
-    sessions.push({ userId, status: info.status }),
+    sessions.push({ userId, status: info.status })
   );
   res.json(sessions);
 });
@@ -1246,8 +1074,9 @@ app.get("/api/user-sessions", (req, res) => {
       messageCount: session.messageCount,
       facts: session.facts,
       historyLength: session.history.length,
-      mood: session.mood, // 🆕
-      languageStyle: session.languageStyle, // 🆕
+      mood: session.mood,
+      languageStyle: session.languageStyle,
+      energy: session.energy,
     });
   });
   res.json(data);
@@ -1258,7 +1087,6 @@ app.delete("/api/user-sessions/:id", (req, res) => {
   res.json({ success: deleted });
 });
 
-// 🆕 Mood analytics endpoint
 app.get("/api/mood-stats", (req, res) => {
   const stats = {};
   userSessions.forEach((s) => {
@@ -1280,7 +1108,7 @@ io.on("connection", (socket) => {
       socket.emit("status", { userId, status: info.status });
       if (info.qrString)
         QRCode.toDataURL(info.qrString).then((img) =>
-          socket.emit("qr", { userId, qrImage: img }),
+          socket.emit("qr", { userId, qrImage: img })
         );
     }
   });
@@ -1289,19 +1117,16 @@ io.on("connection", (socket) => {
     log("info", `Creating client: ${userId}`);
     createClient(userId);
   });
+
   socket.on("disconnect_user", (userId) => {
     if (clients.has(userId)) {
-      try {
-        clients.get(userId).client.destroy();
-      } catch (e) {}
+      try { clients.get(userId).client.destroy(); } catch (e) {}
       clients.delete(userId);
       io.to(userId).emit("status", { userId, status: "disconnected" });
     }
   });
 
-  socket.on("disconnect", () =>
-    log("info", `Socket disconnected: ${socket.id}`),
-  );
+  socket.on("disconnect", () => log("info", `Socket disconnected: ${socket.id}`));
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1310,35 +1135,24 @@ io.on("connection", (socket) => {
 process.on("SIGTERM", async () => {
   log("info", "Shutting down...");
   for (const [, info] of clients)
-    try {
-      await info.client.destroy();
-    } catch (e) {}
+    try { await info.client.destroy(); } catch (e) {}
   server.close(() => process.exit(0));
 });
 
 process.on("unhandledRejection", (reason) =>
-  log("error", `Unhandled: ${reason}`),
+  log("error", `Unhandled: ${reason}`)
 );
 
 app.get("/", (req, res) =>
-  res.sendFile(path.join(__dirname, "public", "index.html")),
+  res.sendFile(path.join(__dirname, "public", "index.html"))
 );
 
 // ══════════════════════════════════════════════════════════════════════
 // 🚀  START
 // ══════════════════════════════════════════════════════════════════════
-server.listen(PORT, '0.0.0.0', () => {
-  log("success", `🚀 Nobo Deal Bot → http://localhost:${PORT}`);
-  log(
-    "info",
-    `Providers: ${aiRouter.providers.map((p) => `${p.name}(${p.keys.length} keys × ${p.models.length} models)`).join(" | ")}`,
-  );
-  log(
-    "info",
-    `Voice (Whisper): ${WHISPER_API_KEY ? "✅ Enabled" : "❌ No key (WHISPER_API_KEY)"}`,
-  );
-  log(
-    "info",
-    `Multimodal Features: ✅ Mood Detection | ✅ Language Detection | ✅ Image Memory | ✅ Voice Transcription`,
-  );
+server.listen(PORT, () => {
+  log("success", `🚀 Sabbir Bot → http://localhost:${PORT}`);
+  log("info", `Providers: ${aiRouter.providers.map((p) => `${p.name}(${p.keys.length}k × ${p.models.length}m)`).join(" | ")}`);
+  log("info", `Voice (Whisper): ${WHISPER_API_KEY ? "✅ Enabled" : "❌ No key"}`);
+  log("info", `Sabbir is online — real human personality active 🧑`);
 });
