@@ -914,10 +914,11 @@ function createClient(userId) {
     clients.delete(userId);
   }
 
-  const client = new Client({
+const client = new Client({
     authStrategy: new LocalAuth({ clientId: userId }),
     puppeteer: {
       headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
